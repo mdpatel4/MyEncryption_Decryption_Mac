@@ -1,0 +1,124 @@
+import os
+import hashlib
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import utils
+
+# Declaring Variables
+backend = default_backend()
+key = os.urandom(32)
+iv = os.urandom(16)
+message = (b"my first encrypt")
+
+#Generating Private Key
+private_key = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+    )
+RSA_Privatekey_filepath = private_key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.BestAvailableEncryption(b'mypassword')
+    )
+
+# loading public key.
+public_key = private_key.public_key()
+RSA_Publickey_filepath = public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+# encryption method
+def Myencryption(message, key):
+    if (len(key) >= 32):
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+        encryptor = cipher.encryptor()
+        entrypt = encryptor.update(message) + encryptor.finalize()
+    else:
+        entrypt = "Key length is shorter than 32 bytes."
+        entrypt = str.encode(entrypt)
+    return entrypt
+
+# decryption method
+def Mydecryption(message, key):
+    if (len(key) >= 32):
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+        decryptor = cipher.decryptor()
+        decrypt = decryptor.update(message) + decryptor.finalize()
+    else:
+        decrypt = "Key length is shorter than 32 bytes."
+        decrypt = str.encode(decrypt)
+    return decrypt
+
+# File encryption method
+def MyFileencryption(filePath):
+    name, ext = os.path.splitext(filename)
+    if (len(ext) < 4):
+        print ("File extention is not valid.")
+    else:
+        fileObj = open(filePath, 'rb')
+        content = fileObj.read()
+        fileObj.close()
+        c = Myencryption(content, key)
+        saveFile(Myencryption(content, key), "\\" + name + "_encrypted.txt")
+        print ("\nFile Encryption Process is completed.")
+    return (c, iv, key, ext)
+
+# File decryption method
+def MyFiledecryption(C, IV, key, fileName, ext):
+    name, ext = os.path.splitext(filename)
+    if (len(ext) < 4):
+        print ("File extention is not valid.")
+    else:
+        decrypt = Mydecryption(C, key)
+        saveFile(decrypt, ("\\" + name + "_decrypted" + ext))
+        print ("File Decryption Process is completed.")
+    return (C, key)
+
+# File saving process for text, img and etc extention
+def saveFile(plainText, fileName):
+    fileObj = open("C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Generated_Files" + fileName, 'wb')
+    fileObj.write(plainText)
+    fileObj.close()
+
+# RSA encryption method for key
+def MyRSAEncrypt(filePath, RSA_Publickey_filepath):
+    C, IV, key, ext = MyFileencryption(filePath)
+    RSACipher = public_key.encrypt(
+        key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA1(),
+            label=None
+            )
+        )
+    return RSACipher, C, IV, ext
+
+# RSA decryption method for key
+def MyRSADecrypt(RSACipher, C, IV, filePath, ext, RSA_Privatekey_filepath):
+    #decrypt the RSACipher to get the key
+    key = private_key.decrypt(
+        RSACipher,
+        padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                algorithm=hashes.SHA1(),
+                label=None
+        )
+    )
+    MyFiledecryption(C, IV, key, filePath, ext)
+
+# Main Method
+print ("**********Message Encryption Process**********\n")
+print ("Encrypted Message: ", Myencryption(message, key))
+print ("Decrypted Message: ", Mydecryption(Myencryption(message, key), key))
+print ("\n**********Files or Images Encryption Process starting**********\n")
+filename = input("Please enter filename with extention: ")
+filePath = "C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\\"
+RSACipher, C, IV, ext = MyRSAEncrypt((filePath + filename), RSA_Publickey_filepath)
+MyRSADecrypt(RSACipher, C, IV, filePath, ext, RSA_Privatekey_filepath)
+print ("\nPlease check the path below:\nC:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Generated_Files\\" + filename)
