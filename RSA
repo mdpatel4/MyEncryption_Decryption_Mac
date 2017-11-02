@@ -5,7 +5,6 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import utils
 
 # Declaring Variables
@@ -20,25 +19,34 @@ private_key = rsa.generate_private_key(
     key_size=2048,
     backend=default_backend()
     )
-RSA_Privatekey_filepath = private_key.private_bytes(
+private_pem = private_key.private_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.BestAvailableEncryption(b'mypassword')
+    encryption_algorithm=serialization.NoEncryption()
     )
+privateKey = open("C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Keys\private_key", 'wb')
+privateKey.write(private_pem)
+privateKey.close()
 
 # loading public key.
 public_key = private_key.public_key()
-RSA_Publickey_filepath = public_key.public_bytes(
+public_pem = public_key.public_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
+publicKey = open("C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Keys\public_key", 'wb')
+publicKey.write(public_pem)
+publicKey.close()
 
 # encryption method
 def Myencryption(message, key):
+    from cryptography.hazmat.primitives import padding
     if (len(key) >= 32):
+        padder = padding.PKCS7(128).padder()
+        padder_data = padder.update(message) + padder.finalize()
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         encryptor = cipher.encryptor()
-        entrypt = encryptor.update(message) + encryptor.finalize()
+        entrypt = encryptor.update(padder_data) + encryptor.finalize()
     else:
         entrypt = "Key length is shorter than 32 bytes."
         entrypt = str.encode(entrypt)
@@ -46,10 +54,13 @@ def Myencryption(message, key):
 
 # decryption method
 def Mydecryption(message, key):
+    from cryptography.hazmat.primitives import padding
     if (len(key) >= 32):
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
         decryptor = cipher.decryptor()
-        decrypt = decryptor.update(message) + decryptor.finalize()
+        unpadder_data = decryptor.update(message) + decryptor.finalize()
+        unpadder = padding.PKCS7(128).unpadder()
+        decrypt = unpadder.update(unpadder_data) + unpadder.finalize()
     else:
         decrypt = "Key length is shorter than 32 bytes."
         decrypt = str.encode(decrypt)
@@ -88,8 +99,17 @@ def saveFile(plainText, fileName):
 
 # RSA encryption method for key
 def MyRSAEncrypt(filePath, RSA_Publickey_filepath):
+    from cryptography.hazmat.primitives.asymmetric import padding
+    public_path = open(RSA_Publickey_filepath, 'rb')
+    pub_key = serialization.load_pem_public_key(
+        public_path.read(),
+        backend=default_backend()
+        )
+    public_path.close()
+    
     C, IV, key, ext = MyFileencryption(filePath)
-    RSACipher = public_key.encrypt(
+   
+    RSACipher = pub_key.encrypt(
         key,
         padding.OAEP(
             mgf=padding.MGF1(algorithm=hashes.SHA1()),
@@ -101,8 +121,17 @@ def MyRSAEncrypt(filePath, RSA_Publickey_filepath):
 
 # RSA decryption method for key
 def MyRSADecrypt(RSACipher, C, IV, filePath, ext, RSA_Privatekey_filepath):
+    from cryptography.hazmat.primitives.asymmetric import padding
+    private_path = open(RSA_Privatekey_filepath, 'rb')
+    pri_key = serialization.load_pem_private_key(
+        private_path.read(),
+        password=None,
+        backend=default_backend()
+        )
+    private_path.close()
+    
     #decrypt the RSACipher to get the key
-    key = private_key.decrypt(
+    key = pri_key.decrypt(
         RSACipher,
         padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA1()),
@@ -114,11 +143,13 @@ def MyRSADecrypt(RSACipher, C, IV, filePath, ext, RSA_Privatekey_filepath):
 
 # Main Method
 print ("**********Message Encryption Process**********\n")
-print ("Encrypted Message: ", Myencryption(message, key))
-print ("Decrypted Message: ", Mydecryption(Myencryption(message, key), key))
+encrypted = Myencryption(message, key)
+print ("Encrypted Message: ", encrypted)
+decrypted = Mydecryption(encrypted, key)
+print ("Decrypted Message: ", decrypted)
 print ("\n**********Files or Images Encryption Process starting**********\n")
 filename = input("Please enter filename with extention: ")
 filePath = "C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\\"
-RSACipher, C, IV, ext = MyRSAEncrypt((filePath + filename), RSA_Publickey_filepath)
-MyRSADecrypt(RSACipher, C, IV, filePath, ext, RSA_Privatekey_filepath)
+RSACipher, C, IV, ext = MyRSAEncrypt((filePath + filename), "C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Keys\public_key")
+MyRSADecrypt(RSACipher, C, IV, filePath, ext, "C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Keys\private_key")
 print ("\nPlease check the path below:\nC:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_3\Generated_Files\\" + filename)
