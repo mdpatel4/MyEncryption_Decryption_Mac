@@ -1,0 +1,235 @@
+import os
+import hashlib
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import utils
+from cryptography.hazmat.primitives import hashes, hmac
+import json
+
+# Declaring Variables
+backend = default_backend()
+Enckey = os.urandom(32)
+HMACkey = os.urandom(32)
+iv = os.urandom(16)
+message = (b"my first encrypt")
+
+#Generating Private Key
+def generateKey():
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+        )
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+        )
+    privateKey = open("C:\\Users\Tejas\Desktop\private_key.pem", 'wb')
+    privateKey.write(private_pem)
+    privateKey.close()
+    return private_key
+
+# loading public key.
+def loadKey():
+    public_key = private_key.public_key()
+    public_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+    publicKey = open("C:\\Users\Tejas\Desktop\public_key.pem", 'wb')
+    publicKey.write(public_pem)
+    publicKey.close()
+
+# encryption method
+def MyencryptionMac(message, Enckey, HMACkey):
+
+    from cryptography.hazmat.primitives import padding
+    if (len(Enckey) >= 32):
+        try:
+            message = message.encode()
+        except:
+            pass
+        
+        padder = padding.PKCS7(128).padder()
+        padder_data = padder.update(message) + padder.finalize()
+        cipher = Cipher(algorithms.AES(Enckey), modes.CBC(iv), backend=backend)
+        encryptor = cipher.encryptor()
+        entrypt = encryptor.update(padder_data) + encryptor.finalize()
+        
+        h = hmac.HMAC(HMACkey, hashes.SHA256(), backend=default_backend())
+        h.update(entrypt)
+        h = h.finalize()
+    else:
+        entrypt = "Enckey length is shorter than 32 bytes."
+        entrypt = str.encode(entrypt)
+        
+    return (entrypt, h)
+
+# decryption method
+def MydecryptionMac(message, tag, Enckey, HMACkey):
+    from cryptography.hazmat.primitives import padding
+
+    h = hmac.HMAC(HMACkey, hashes.SHA256(), backend=default_backend())
+    h.update(message)
+    h = h.finalize()
+
+    if h == tag:
+        print("Tag is being Varified......")
+        if (len(Enckey) >= 32):
+            cipher = Cipher(algorithms.AES(Enckey), modes.CBC(iv), backend=backend)
+            decryptor = cipher.decryptor()
+            unpadder_data = decryptor.update(message) + decryptor.finalize()
+            unpadder = padding.PKCS7(128).unpadder()
+            decrypt = unpadder.update(unpadder_data) + unpadder.finalize()
+        else:
+            decrypt = "Key length is shorter than 32 bytes."
+            decrypt = str.encode(decrypt)
+    else:
+        rdecrypt = "Invalid tag"
+    return decrypt
+
+# File encryption method
+def MyFileEncryptionMac(filePath):
+    name, ext = os.path.splitext(filename)
+    if (len(ext) < 1):
+        print ("File extention is not valid.")
+    else:
+        fileObj = open(filePath, 'rb')
+        content = fileObj.read()
+        fileObj.close()
+        c, h = MyencryptionMac(content, Enckey, HMACkey)
+        print ("\nFile Encryption Process is completed.")
+    return (c, iv, h , Enckey, HMACkey, ext)
+
+# File decryption method
+def MyFileDecryptionMac(C, IV, h, Enckey, hmacKey, fileName, ext):
+    name, ext_1 = os.path.splitext(filename)
+    if (len(ext) < 1):
+        print ("File extention is not valid.")
+    else:
+        decrypt = MydecryptionMac(C, h, Enckey,HMACkey)
+        #print("C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_4\Generat_Files\\" + name + ext)
+        fileObj = open("C:\\Users\Tejas\Desktop\Generat_Files\\" + name + ext, 'wb')
+        fileObj.write(decrypt)
+        fileObj.close()
+        print ("File Decryption Process is completed.")
+    return (C, h, Enckey,HMACkey)
+
+# File saving process for text, img and etc extention
+def saveFile(plainText, fileName):
+    pat = "C:\\Users\Tejas\Desktop\Generat_Files"
+    pat = os.path.join(pat,fileName)
+    with open(pat, 'w') as outfile:
+        json.dump(plainText , outfile)
+
+# RSA encryption method for key
+def MyRSAEncryptMac(filePath, RSA_Publickey_filepath):
+   # print("filePath = " , filePath)
+    from cryptography.hazmat.primitives.asymmetric import padding
+    public_path = open(RSA_Publickey_filepath, 'rb')
+    pub_key = serialization.load_pem_public_key(
+        public_path.read(),
+        backend=default_backend()
+        )
+    public_path.close()
+    
+    C, IV, h ,key, hkey, ext = MyFileEncryptionMac(filePath)
+    print(type(C))
+   
+    RSACipher = pub_key.encrypt(
+        key+ "break".encode() +hkey,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA1(),
+            label=None
+            )
+        )
+    info = {}
+    info['RSACipher'] = RSACipher.decode('latin-1')
+    info['C'] = C.decode('latin-1')
+    info['iv'] = IV.decode('latin-1')
+    info['hmac'] = h.decode('latin-1')
+    info['EXT'] = ext
+    namePath = os.path.basename(filePath)
+    name = os.path.splitext(namePath)
+    print(name[0])
+    saveFile(info, name[0] + ".json")
+    return RSACipher, C, IV, h, ext
+
+# RSA decryption method for key
+def MyRSADecryptMac(RSACipher, C, IV,h, filePath, ext, RSA_Privatekey_filepath):
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    private_path = open(RSA_Privatekey_filepath, 'rb')
+    pri_key = serialization.load_pem_private_key(
+        private_path.read(),
+        password=None,
+        backend=default_backend()
+        )
+    private_path.close()
+    
+    #decrypt the RSACipher to get the key
+    key = pri_key.decrypt(
+        RSACipher,
+        padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                algorithm=hashes.SHA1(),
+                label=None
+        )
+    )
+    key_list = key.split("break".encode())
+    Enckey, HMACKey = key_list[0], key_list[1]
+    MyFileDecryptionMac(C, IV,h, Enckey, HMACKey, filePath, ext)
+
+
+# step 2 looking for file
+
+checker = False
+for (directoryName, directory, files) in os.walk('.'):
+   for filename in files:
+       if filename.endswith('.pem') :
+           checker = True
+
+if(checker == False):
+    private_key = generateKey()
+    loadKey()
+    print("Keys are generated.")
+else:
+    print("Keys are found.")
+
+# step # 4
+
+#path = os.getcwd() + "\\"
+path = "C:\\Users\Tejas\Desktop\Generat_Files\\"
+pubPath ="C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_4\public_key.pem"
+os.chdir(path)
+for (directoryName, directory, files) in os.walk('.'):
+    for filename in files:
+        if(filename != "private_key.pem"):
+            RSACipher, C, IV, h, ext = MyRSAEncryptMac(path + filename, pubPath)
+            os.remove(path + filename)            
+            
+privatePath = "C:\\Users\Tejas\Desktop\CSULB\CECS 378\Phrase_4\private_key.pem"
+os.chdir(path)
+
+for (directoryName, directory, files) in os.walk('.'): 
+    for filename in files:
+        if(filename != "private_key.pem"):
+            with open(filename,'r')as fi:
+                print(fi)
+                js = json.load(fi)
+
+            js_RSACipher = bytes(js["RSACipher"],'latin-1')
+            js_C = bytes(js["C"],'latin-1')
+            js_IV= bytes(js["iv"],'latin-1')
+            js_ext = js["EXT"]
+            js_hmac = bytes(js["hmac"],'latin-1')
+            MyRSADecryptMac(js_RSACipher, js_C, js_IV,js_hmac, path, js_ext, privatePath)
+            os.remove(path + filename)
+
+    
+print ("Please check the path below:\nC:\\Users\Tejas\Desktop\Generat_Files\\")
